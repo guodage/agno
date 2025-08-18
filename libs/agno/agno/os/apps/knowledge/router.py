@@ -315,7 +315,7 @@ def attach_routes(router: APIRouter, knowledge: Knowledge) -> APIRouter:
     return router
 
 
-def process_content(
+async def process_content(
     knowledge: Knowledge,
     content_id: str,
     content: Content,
@@ -348,7 +348,7 @@ def process_content(
             log_debug(f"Set chunking strategy: {chunker}")
 
         log_debug(f"Using reader: {content.reader.__class__.__name__}")
-        knowledge.process_content(content)
+        await knowledge._load_content(content, upsert=False, skip_if_exists=True)
         log_info(f"Content {content_id} processed successfully")
     except Exception as e:
         log_info(f"Error processing content {content_id}: {e}")
