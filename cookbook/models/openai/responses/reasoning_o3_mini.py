@@ -3,7 +3,7 @@ from agno.models.openai import OpenAIResponses
 from agno.tools.yfinance import YFinanceTools
 
 agent = Agent(
-    model=OpenAIResponses(id="o3-mini", reasoning_effort="high"),
+    model=OpenAIResponses(id="o3-mini"),
     tools=[YFinanceTools(enable_all=True)],
     markdown=True,
 )

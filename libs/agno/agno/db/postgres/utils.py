@@ -138,7 +138,7 @@ def bulk_upsert_metrics(session: Session, table: Table, metrics_records: list[di
         if col.name not in ["id", "date", "created_at", "aggregation_period"]
     }
 
-    stmt = stmt.on_conflict_do_update(index_elements=["date", "aggregation_period"], set_=update_columns).returning(
+    stmt = stmt.on_conflict_do_update(index_elements=["date", "aggregation_period"], set_=update_columns).returning(  # type: ignore
         table
     )
     result = session.execute(stmt, metrics_records)
@@ -171,10 +171,10 @@ def calculate_date_metrics(date_to_process: date, sessions_data: dict) -> dict:
         "input_tokens": 0,
         "output_tokens": 0,
         "total_tokens": 0,
-        "audio_tokens": 0,
-        "input_audio_tokens": 0,
-        "output_audio_tokens": 0,
-        "cached_tokens": 0,
+        "audio_total_tokens": 0,
+        "audio_input_tokens": 0,
+        "audio_output_tokens": 0,
+        "cache_read_tokens": 0,
         "cache_write_tokens": 0,
         "reasoning_tokens": 0,
     }

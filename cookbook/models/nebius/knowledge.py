@@ -15,9 +15,5 @@ knowledge.add_content(
     url="https://agno-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf"
 )
 
-agent = Agent(
-    model=Nebius(id="Qwen/Qwen3-30B-A3B"),
-    knowledge=knowledge,
-    show_tool_calls=True,
-)
+agent = Agent(model=Nebius(id="Qwen/Qwen3-30B-A3B"), knowledge=knowledge)
 agent.print_response("How to make Thai curry?", markdown=True)

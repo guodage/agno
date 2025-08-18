@@ -121,6 +121,7 @@ class WebSearchReader(Reader):
                 else:
                     logger.error(f"All DuckDuckGo search attempts failed: {e}")
                     return []
+        return []
 
     def _perform_google_search(self, query: str) -> List[Dict[str, str]]:
         """Perform web search using Google (requires googlesearch-python)"""
@@ -159,6 +160,8 @@ class WebSearchReader(Reader):
                     logger.error(f"All Google search attempts failed: {e}")
                     return []
 
+        return []
+
     def _perform_web_search(self, query: str) -> List[Dict[str, str]]:
         """Perform web search using the configured search engine"""
         if self.search_engine == "duckduckgo":
@@ -173,7 +176,7 @@ class WebSearchReader(Reader):
         """Check if URL is valid and not already visited"""
         try:
             parsed = urlparse(url)
-            return parsed.scheme in ["http", "https"] and parsed.netloc and url not in self._visited_urls
+            return bool(parsed.scheme in ["http", "https"] and parsed.netloc and url not in self._visited_urls)
         except Exception:
             return False
 
@@ -258,7 +261,7 @@ class WebSearchReader(Reader):
             logger.warning(f"No search results found for query: {query}")
             return []
 
-        documents = []
+        documents: List[Document] = []
 
         for result in search_results:
             url = result.get("url", "")

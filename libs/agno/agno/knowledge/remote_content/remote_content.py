@@ -1,19 +1,12 @@
-from abc import ABC, abstractmethod
-from typing import Optional
-
-from google.cloud import storage
+from dataclasses import dataclass
+from typing import Optional, Union
 
 from agno.infra.aws.s3.bucket import S3Bucket
 from agno.infra.aws.s3.object import S3Object
 
 
-class RemoteContent(ABC):
-    @abstractmethod
-    def get_config(self):
-        pass
-
-
-class S3Content(RemoteContent):
+@dataclass
+class S3Content:
     def __init__(
         self,
         bucket_name: Optional[str] = None,
@@ -50,14 +43,23 @@ class S3Content(RemoteContent):
         }
 
 
-class GCSContent(RemoteContent):
+@dataclass
+class GCSContent:
     def __init__(
         self,
-        bucket: Optional[storage.Bucket] = None,
+        bucket=None,  # Type hint removed to avoid import issues
         bucket_name: Optional[str] = None,
         blob_name: Optional[str] = None,
         prefix: Optional[str] = None,
     ):
+        # Import Google Cloud Storage only when actually needed
+        try:
+            from google.cloud import storage  # type: ignore
+        except ImportError:
+            raise ImportError(
+                "The `google-cloud-storage` package is not installed. Please install it via `pip install google-cloud-storage`."
+            )
+
         self.bucket = bucket
         self.bucket_name = bucket_name
         self.blob_name = blob_name
@@ -81,3 +83,6 @@ class GCSContent(RemoteContent):
             "blob_name": self.blob_name,
             "prefix": self.prefix,
         }
+
+
+RemoteContent = Union[S3Content, GCSContent]

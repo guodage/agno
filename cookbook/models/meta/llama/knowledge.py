@@ -16,8 +16,6 @@ knowledge.add_content(
 )
 
 agent = Agent(
-    model=Llama(id="Llama-4-Maverick-17B-128E-Instruct-FP8"),
-    knowledge=knowledge,
-    show_tool_calls=True,
+    model=Llama(id="Llama-4-Maverick-17B-128E-Instruct-FP8"), knowledge=knowledge
 )
 agent.print_response("How to make Thai curry?", markdown=True)

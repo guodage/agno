@@ -17,15 +17,15 @@ kb.add_contents(
     urls=[
         "https://agno-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf",
         "https://docs.agno.com/introduction",
-    ],
+    ]
 )
 
+# Initialize the Agent with the combined knowledge base
 agent = Agent(
     knowledge=kb,
     search_knowledge=True,
-    show_tool_calls=True,
     tools=[
-        WebsiteTools(knowledge_base=kb)  #
+        WebsiteTools(knowledge_base=kb)  # Set combined or website knowledge base
     ],
 )
 

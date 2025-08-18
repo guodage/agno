@@ -14,8 +14,9 @@ agent = Agent(
 agent.print_response("What is the stock price of NVDA", stream=True)
 
 # Print metrics per message
-if agent.run_response.messages:
-    for message in agent.run_response.messages:
+
+if agent.run_response and agent.run_response.messages:
+    for message in agent.run_response.messages:  # type: ignore
         if message.role == "assistant":
             if message.content:
                 print(f"Message: {message.content}")
@@ -27,7 +28,7 @@ if agent.run_response.messages:
 
 # Print the aggregated metrics for the whole run
 print("---" * 5, "Collected Metrics", "---" * 5)
-pprint(agent.run_response.metrics)
+pprint(agent.run_response.metrics)  # type: ignore
 # Print the aggregated metrics for the whole session
 print("---" * 5, "Session Metrics", "---" * 5)
 pprint(agent.session_metrics)

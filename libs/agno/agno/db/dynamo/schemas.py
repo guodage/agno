@@ -187,6 +187,7 @@ KNOWLEDGE_TABLE_SCHEMA = {
         {"AttributeName": "status_message", "AttributeType": "S"},
         {"AttributeName": "created_at", "AttributeType": "N"},
         {"AttributeName": "updated_at", "AttributeType": "N"},
+        {"AttributeName": "external_id", "AttributeType": "S"},
     ],
     "GlobalSecondaryIndexes": [
         {
@@ -264,7 +265,7 @@ def get_table_schema_definition(table_type: str) -> Dict[str, Any]:
     """
     schemas = {
         "sessions": SESSION_TABLE_SCHEMA,
-        "user_memories": USER_MEMORY_TABLE_SCHEMA,
+        "memories": USER_MEMORY_TABLE_SCHEMA,
         "evals": EVAL_TABLE_SCHEMA,
         "knowledge": KNOWLEDGE_TABLE_SCHEMA,
         "metrics": METRICS_TABLE_SCHEMA,

@@ -58,9 +58,9 @@ class S3Reader(Reader):
             logger.error(f"Error reading: {s3_object.uri}: {e}")
         return []
 
-    async def async_read(self, s3_object: S3Object) -> List[Document]:
+    async def async_read(self, name: Optional[str], s3_object: S3Object) -> List[Document]:
         """Asynchronously read S3 files by running the synchronous read operation in a thread."""
-        return await asyncio.to_thread(self.read, s3_object)
+        return await asyncio.to_thread(self.read, name, s3_object)
 
 
 class S3TextReader(Reader):
@@ -107,7 +107,7 @@ class S3TextReader(Reader):
             logger.error(f"Error reading: {s3_object.uri}: {e}")
         return []
 
-    async def async_read(self, s3_object: S3Object) -> List[Document]:
+    async def async_read(self, name: Optional[str], s3_object: S3Object) -> List[Document]:
         """Asynchronously read text files from S3 by running the synchronous read operation in a thread.
 
         Args:
@@ -116,7 +116,7 @@ class S3TextReader(Reader):
         Returns:
             List[Document]: List of documents from the text file
         """
-        return await asyncio.to_thread(self.read, s3_object)
+        return await asyncio.to_thread(self.read, name, s3_object)
 
 
 class S3PDFReader(Reader):
@@ -150,7 +150,7 @@ class S3PDFReader(Reader):
         except Exception:
             raise
 
-    async def async_read(self, s3_object: S3Object) -> List[Document]:
+    async def async_read(self, name: Optional[str], s3_object: S3Object) -> List[Document]:
         """Asynchronously read PDF files from S3 by running the synchronous read operation in a thread.
 
         Args:
@@ -159,4 +159,4 @@ class S3PDFReader(Reader):
         Returns:
             List[Document]: List of documents from the PDF file
         """
-        return await asyncio.to_thread(self.read, s3_object)
+        return await asyncio.to_thread(self.read, name, s3_object)

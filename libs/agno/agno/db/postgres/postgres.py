@@ -106,7 +106,9 @@ class PostgresDb(BaseDb):
         try:
             table_schema = get_table_schema_definition(table_type).copy()
 
-            columns, indexes, unique_constraints = [], [], []
+            columns: List[Column] = []
+            indexes: List[str] = []
+            unique_constraints: List[str] = []
             schema_unique_constraints = table_schema.pop("_unique_constraints", [])
 
             # Get the columns, indexes, and unique constraints from the table schema
@@ -122,7 +124,7 @@ class PostgresDb(BaseDb):
                 if col_config.get("unique", False):
                     column_kwargs["unique"] = True
                     unique_constraints.append(col_name)
-                columns.append(Column(*column_args, **column_kwargs))
+                columns.append(Column(*column_args, **column_kwargs))  # type: ignore
 
             # Create the table object
             table_metadata = MetaData(schema=db_schema)
@@ -373,7 +375,7 @@ class PostgresDb(BaseDb):
         sort_by: Optional[str] = None,
         sort_order: Optional[str] = None,
         deserialize: Optional[bool] = True,
-    ) -> Union[List[AgentSession], List[TeamSession], List[WorkflowSession], Tuple[List[Dict[str, Any]], int]]:
+    ) -> Union[List[Session], Tuple[List[Dict[str, Any]], int]]:
         """
         Get all sessions in the given table. Can filter by user_id and entity_id.
 
@@ -562,7 +564,7 @@ class PostgresDb(BaseDb):
                         created_at=session_dict.get("created_at"),
                         updated_at=session_dict.get("created_at"),
                     )
-                    stmt = stmt.on_conflict_do_update(
+                    stmt = stmt.on_conflict_do_update(  # type: ignore
                         index_elements=["session_id"],
                         set_=dict(
                             agent_id=session_dict.get("agent_id"),
@@ -600,7 +602,7 @@ class PostgresDb(BaseDb):
                         created_at=session_dict.get("created_at"),
                         updated_at=session_dict.get("created_at"),
                     )
-                    stmt = stmt.on_conflict_do_update(
+                    stmt = stmt.on_conflict_do_update(  # type: ignore
                         index_elements=["session_id"],
                         set_=dict(
                             team_id=session_dict.get("team_id"),
@@ -638,7 +640,7 @@ class PostgresDb(BaseDb):
                         created_at=session_dict.get("created_at"),
                         updated_at=session_dict.get("created_at"),
                     )
-                    stmt = stmt.on_conflict_do_update(
+                    stmt = stmt.on_conflict_do_update(  # type: ignore
                         index_elements=["session_id"],
                         set_=dict(
                             workflow_id=session_dict.get("workflow_id"),
@@ -779,7 +781,6 @@ class PostgresDb(BaseDb):
         user_id: Optional[str] = None,
         agent_id: Optional[str] = None,
         team_id: Optional[str] = None,
-        workflow_id: Optional[str] = None,
         topics: Optional[List[str]] = None,
         search_content: Optional[str] = None,
         limit: Optional[int] = None,
@@ -794,7 +795,6 @@ class PostgresDb(BaseDb):
             user_id (Optional[str]): The ID of the user to filter by.
             agent_id (Optional[str]): The ID of the agent to filter by.
             team_id (Optional[str]): The ID of the team to filter by.
-            workflow_id (Optional[str]): The ID of the workflow to filter by.
             topics (Optional[List[str]]): The topics to filter by.
             search_content (Optional[str]): The content to search for.
             limit (Optional[int]): The maximum number of memories to return.
@@ -970,7 +970,7 @@ class PostgresDb(BaseDb):
                     topics=memory.topics,
                     updated_at=int(time.time()),
                 )
-                stmt = stmt.on_conflict_do_update(
+                stmt = stmt.on_conflict_do_update(  # type: ignore
                     index_elements=["memory_id"],
                     set_=dict(
                         memory=memory.memory,
@@ -1607,7 +1607,8 @@ class PostgresDb(BaseDb):
             return
 
         # Parse the content into the new format
-        memories = []
+        memories: List[UserMemory] = []
+        sessions: List[AgentSession] | List[TeamSession] | List[WorkflowSession] = []
         if v1_table_type == "agent_sessions":
             sessions = parse_agent_sessions(old_content)
         elif v1_table_type == "team_sessions":

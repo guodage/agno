@@ -19,7 +19,7 @@ from typing import List, Optional
 import inquirer
 import typer
 from agno.agent import Agent
-from agno.db.sqlite import SqliteStorage
+from agno.db.sqlite import SqliteDb
 from agno.knowledge.embedder.openai import OpenAIEmbedder
 from agno.knowledge.knowledge import Knowledge
 from agno.models.groq import Groq
@@ -43,15 +43,14 @@ def initialize_knowledge_base():
     return agent_knowledge
 
 
-def get_agent_storage():
-    """Return agent storage"""
-    return SqliteStorage(table_name="deep_knowledge_sessions", db_file="tmp/agents.db")
+def get_db():
+    return SqliteDb(db_file="tmp/agents.db")
 
 
 def create_agent(session_id: Optional[str] = None) -> Agent:
     """Create and return a configured DeepKnowledge agent."""
     agent_knowledge = initialize_knowledge_base()
-    agent_storage = get_agent_storage()
+    db = get_db()
     return Agent(
         name="DeepKnowledge",
         session_id=session_id,
@@ -102,9 +101,9 @@ def create_agent(session_id: Optional[str] = None) -> Agent:
         - Memory: You have access to your previous search results and reasoning process.
         """),
         knowledge=agent_knowledge,
-        storage=agent_storage,
+        db=db,
         add_history_to_context=True,
-        num_history_responses=3,
+        num_history_runs=3,
         read_chat_history=True,
         markdown=True,
     )
@@ -123,20 +122,20 @@ def get_example_topics() -> List[str]:
 
 def handle_session_selection() -> Optional[str]:
     """Handle session selection and return the selected session ID."""
-    agent_storage = get_agent_storage()
+    db = get_db()
 
     new = typer.confirm("Do you want to start a new session?", default=True)
     if new:
         return None
 
-    existing_sessions: List[str] = agent_storage.get_all_session_ids()
+    existing_sessions = db.get_sessions()
     if not existing_sessions:
         print("No existing sessions found. Starting a new session.")
         return None
 
     print("\nExisting sessions:")
     for i, session in enumerate(existing_sessions, 1):
-        print(f"{i}. {session}")
+        print(f"{i}. {session.session_id}")  # type: ignore
 
     session_idx = typer.prompt(
         "Choose a session number to continue (or press Enter for most recent)",
@@ -144,9 +143,9 @@ def handle_session_selection() -> Optional[str]:
     )
 
     try:
-        return existing_sessions[int(session_idx) - 1]
+        return existing_sessions[int(session_idx) - 1].session_id  # type: ignore
     except (ValueError, IndexError):
-        return existing_sessions[0]
+        return existing_sessions[0].session_id  # type: ignore
 
 
 def run_interactive_loop(agent: Agent):
@@ -160,21 +159,21 @@ def run_interactive_loop(agent: Agent):
         questions = [
             inquirer.List(
                 "topic",
-                message="Select a topic or ask a different question:",
+                input="Select a topic or ask a different question:",
                 choices=choices,
             )
         ]
         answer = inquirer.prompt(questions)
 
-        if answer["topic"] == "Exit":
+        if answer and answer["topic"] == "Exit":
             break
 
-        if answer["topic"] == "Enter custom question...":
-            questions = [inquirer.Text("custom", message="Enter your question:")]
+        if answer and answer["topic"] == "Enter custom question...":
+            questions = [inquirer.Text("custom", input="Enter your question:")]
             custom_answer = inquirer.prompt(questions)
-            topic = custom_answer["custom"]
+            topic = custom_answer["custom"]  # type: ignore
         else:
-            topic = example_topics[int(answer["topic"].split(".")[0]) - 1]
+            topic = example_topics[int(answer["topic"].split(".")[0]) - 1]  # type: ignore
 
         agent.print_response(topic, stream=True)
 

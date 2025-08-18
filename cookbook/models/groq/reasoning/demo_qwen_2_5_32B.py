@@ -15,9 +15,5 @@ knowledge.add_content(
     url="https://agno-public.s3.amazonaws.com/recipes/ThaiRecipes.pdf"
 )
 
-agent = Agent(
-    model=Groq(id="Qwen-2.5-32b"),
-    knowledge=knowledge,
-    show_tool_calls=True,
-)
+agent = Agent(model=Groq(id="Qwen-2.5-32b"), knowledge=knowledge)
 agent.print_response("How to make Thai curry?", markdown=True)

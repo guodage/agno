@@ -1,16 +1,17 @@
 from dataclasses import dataclass
 from typing import Any, AsyncIterator, Awaitable, Callable, Dict, Iterator, List, Optional, Union
+from uuid import uuid4
 
-from agno.run.response import RunResponseEvent
-from agno.run.team import TeamRunResponseEvent
+from agno.run.response import RunOutputEvent
+from agno.run.team import TeamRunOutputEvent
 from agno.run.workflow import (
     StepsExecutionCompletedEvent,
     StepsExecutionStartedEvent,
-    WorkflowRunResponse,
-    WorkflowRunResponseEvent,
+    WorkflowRunOutput,
+    WorkflowRunOutputEvent,
 )
 from agno.utils.log import log_debug, logger
-from agno.workflow.step import Step, StepInput, StepOutput
+from agno.workflow.step import Step, StepInput, StepOutput, StepType
 
 WorkflowSteps = List[
     Union[
@@ -101,7 +102,7 @@ class Steps:
             updated_previous_step_outputs.update(steps_step_outputs)
 
         return StepInput(
-            message=step_input.message,
+            input=step_input.input,
             previous_step_content=previous_step_content,
             previous_step_outputs=updated_previous_step_outputs,
             additional_data=step_input.additional_data,
@@ -115,16 +116,19 @@ class Steps:
         step_input: StepInput,
         session_id: Optional[str] = None,
         user_id: Optional[str] = None,
-        workflow_run_response: Optional[WorkflowRunResponse] = None,
+        workflow_run_response: Optional[WorkflowRunOutput] = None,
+        session_state: Optional[Dict[str, Any]] = None,
         store_executor_responses: bool = True,
-    ) -> List[StepOutput]:
+    ) -> StepOutput:
         """Execute all steps in sequence and return the final result"""
         log_debug(f"Steps Start: {self.name} ({len(self.steps)} steps)", center=True, symbol="-")
+
+        steps_id = str(uuid4())
 
         self._prepare_steps()
 
         if not self.steps:
-            return [StepOutput(step_name=self.name or "Steps", content="No steps to execute")]
+            return StepOutput(step_name=self.name or "Steps", content="No steps to execute")
 
         # Track outputs and pass data between steps - following Condition/Router pattern
         all_results: List[StepOutput] = []
@@ -137,13 +141,14 @@ class Steps:
                 log_debug(f"Steps {self.name}: Executing step {i + 1}/{len(self.steps)} - {step_name}")
 
                 # Execute step
-                step_output = step.execute(
+                step_output = step.execute(  # type: ignore
                     current_step_input,
                     session_id=session_id,
                     user_id=user_id,
                     workflow_run_response=workflow_run_response,
                     store_executor_responses=store_executor_responses,
-                )  # type: ignore
+                    session_state=session_state,
+                )
 
                 # Handle both single StepOutput and List[StepOutput] (from Loop/Condition/Router steps)
                 if isinstance(step_output, list):
@@ -169,31 +174,41 @@ class Steps:
                 )
 
             log_debug(f"Steps End: {self.name} ({len(all_results)} results)", center=True, symbol="-")
-            return all_results
+
+            return StepOutput(
+                step_name=self.name,
+                step_id=steps_id,
+                step_type=StepType.STEPS,
+                content=f"Steps {self.name} completed with {len(all_results)} results",
+                success=all(result.success for result in all_results) if all_results else True,
+                steps=all_results,
+            )
 
         except Exception as e:
             logger.error(f"Steps execution failed: {e}")
-            return [
-                StepOutput(
-                    step_name=self.name or "Steps",
-                    content=f"Steps execution failed: {str(e)}",
-                    success=False,
-                    error=str(e),
-                )
-            ]
+            return StepOutput(
+                step_name=self.name or "Steps",
+                content=f"Steps execution failed: {str(e)}",
+                success=False,
+                error=str(e),
+            )
 
     def execute_stream(
         self,
         step_input: StepInput,
-        workflow_run_response: WorkflowRunResponse,
+        workflow_run_response: WorkflowRunOutput,
+        session_state: Optional[Dict[str, Any]] = None,
         session_id: Optional[str] = None,
         user_id: Optional[str] = None,
         stream_intermediate_steps: bool = False,
         step_index: Optional[Union[int, tuple]] = None,
         store_executor_responses: bool = True,
-    ) -> Iterator[Union[WorkflowRunResponseEvent, TeamRunResponseEvent, RunResponseEvent, StepOutput]]:
+        parent_step_id: Optional[str] = None,
+    ) -> Iterator[Union[WorkflowRunOutputEvent, TeamRunOutputEvent, RunOutputEvent, StepOutput]]:
         """Execute all steps in sequence with streaming support"""
         log_debug(f"Steps Start: {self.name} ({len(self.steps)} steps)", center=True, symbol="-")
+
+        steps_id = str(uuid4())
 
         self._prepare_steps()
 
@@ -207,6 +222,8 @@ class Steps:
                 step_name=self.name,
                 step_index=step_index,
                 steps_count=len(self.steps),
+                step_id=steps_id,
+                parent_step_id=parent_step_id,
             )
 
         if not self.steps:
@@ -237,10 +254,12 @@ class Steps:
                     current_step_input,
                     session_id=session_id,
                     user_id=user_id,
+                    session_state=session_state,
                     stream_intermediate_steps=stream_intermediate_steps,
                     workflow_run_response=workflow_run_response,
                     step_index=child_step_index,
                     store_executor_responses=store_executor_responses,
+                    parent_step_id=steps_id,
                 ):
                     if isinstance(event, StepOutput):
                         step_outputs_for_step.append(event)
@@ -287,10 +306,18 @@ class Steps:
                     steps_count=len(self.steps),
                     executed_steps=len(all_results),
                     step_results=all_results,
+                    step_id=steps_id,
+                    parent_step_id=parent_step_id,
                 )
 
-            for result in all_results:
-                yield result
+            yield StepOutput(
+                step_name=self.name,
+                step_id=steps_id,
+                step_type=StepType.STEPS,
+                content=f"Steps {self.name} completed with {len(all_results)} results",
+                success=all(result.success for result in all_results) if all_results else True,
+                steps=all_results,
+            )
 
         except Exception as e:
             logger.error(f"Steps streaming failed: {e}")
@@ -307,16 +334,19 @@ class Steps:
         step_input: StepInput,
         session_id: Optional[str] = None,
         user_id: Optional[str] = None,
-        workflow_run_response: Optional[WorkflowRunResponse] = None,
+        workflow_run_response: Optional[WorkflowRunOutput] = None,
+        session_state: Optional[Dict[str, Any]] = None,
         store_executor_responses: bool = True,
-    ) -> List[StepOutput]:
+    ) -> StepOutput:
         """Execute all steps in sequence asynchronously and return the final result"""
         log_debug(f"Steps Start: {self.name} ({len(self.steps)} steps)", center=True, symbol="-")
+
+        steps_id = str(uuid4())
 
         self._prepare_steps()
 
         if not self.steps:
-            return [StepOutput(step_name=self.name or "Steps", content="No steps to execute")]
+            return StepOutput(step_name=self.name or "Steps", content="No steps to execute")
 
         # Track outputs and pass data between steps - following Condition/Router pattern
         all_results: List[StepOutput] = []
@@ -329,13 +359,14 @@ class Steps:
                 log_debug(f"Steps {self.name}: Executing async step {i + 1}/{len(self.steps)} - {step_name}")
 
                 # Execute step
-                step_output = await step.aexecute(
+                step_output = await step.aexecute(  # type: ignore
                     current_step_input,
                     session_id=session_id,
                     user_id=user_id,
                     workflow_run_response=workflow_run_response,
                     store_executor_responses=store_executor_responses,
-                )  # type: ignore
+                    session_state=session_state,
+                )
 
                 # Handle both single StepOutput and List[StepOutput] (from Loop/Condition/Router steps)
                 if isinstance(step_output, list):
@@ -360,31 +391,41 @@ class Steps:
                 )
 
             log_debug(f"Steps End: {self.name} ({len(all_results)} results)", center=True, symbol="-")
-            return all_results
+
+            return StepOutput(
+                step_name=self.name,
+                step_id=steps_id,
+                step_type=StepType.STEPS,
+                content=f"Steps {self.name} completed with {len(all_results)} results",
+                success=all(result.success for result in all_results) if all_results else True,
+                steps=all_results,
+            )
 
         except Exception as e:
             logger.error(f"Async steps execution failed: {e}")
-            return [
-                StepOutput(
-                    step_name=self.name or "Steps",
-                    content=f"Steps execution failed: {str(e)}",
-                    success=False,
-                    error=str(e),
-                )
-            ]
+            return StepOutput(
+                step_name=self.name or "Steps",
+                content=f"Steps execution failed: {str(e)}",
+                success=False,
+                error=str(e),
+            )
 
     async def aexecute_stream(
         self,
         step_input: StepInput,
-        workflow_run_response: WorkflowRunResponse,
+        workflow_run_response: WorkflowRunOutput,
+        session_state: Optional[Dict[str, Any]] = None,
         session_id: Optional[str] = None,
         user_id: Optional[str] = None,
         stream_intermediate_steps: bool = False,
         step_index: Optional[Union[int, tuple]] = None,
         store_executor_responses: bool = True,
-    ) -> AsyncIterator[Union[WorkflowRunResponseEvent, TeamRunResponseEvent, RunResponseEvent, StepOutput]]:
+        parent_step_id: Optional[str] = None,
+    ) -> AsyncIterator[Union[WorkflowRunOutputEvent, TeamRunOutputEvent, RunOutputEvent, StepOutput]]:
         """Execute all steps in sequence with async streaming support"""
         log_debug(f"Steps Start: {self.name} ({len(self.steps)} steps)", center=True, symbol="-")
+
+        steps_id = str(uuid4())
 
         self._prepare_steps()
 
@@ -398,6 +439,8 @@ class Steps:
                 step_name=self.name,
                 step_index=step_index,
                 steps_count=len(self.steps),
+                step_id=steps_id,
+                parent_step_id=parent_step_id,
             )
 
         if not self.steps:
@@ -428,10 +471,12 @@ class Steps:
                     current_step_input,
                     session_id=session_id,
                     user_id=user_id,
+                    session_state=session_state,
                     stream_intermediate_steps=stream_intermediate_steps,
                     workflow_run_response=workflow_run_response,
                     step_index=child_step_index,
                     store_executor_responses=store_executor_responses,
+                    parent_step_id=steps_id,
                 ):
                     if isinstance(event, StepOutput):
                         step_outputs_for_step.append(event)
@@ -477,10 +522,18 @@ class Steps:
                     steps_count=len(self.steps),
                     executed_steps=len(all_results),
                     step_results=all_results,
+                    step_id=steps_id,
+                    parent_step_id=parent_step_id,
                 )
 
-            for result in all_results:
-                yield result
+            yield StepOutput(
+                step_name=self.name,
+                step_id=steps_id,
+                step_type=StepType.STEPS,
+                content=f"Steps {self.name} completed with {len(all_results)} results",
+                success=all(result.success for result in all_results) if all_results else True,
+                steps=all_results,
+            )
 
         except Exception as e:
             logger.error(f"Async steps streaming failed: {e}")
