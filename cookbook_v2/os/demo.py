@@ -42,9 +42,6 @@ knowledge = Knowledge(
     name="Agno Docs",
     contents_db=db,
     vector_db=vector_db,
-    readers={
-        "pdf2": PDFReader(chunking_strategy=AgenticChunking()),
-    },
 )
 
 # Create an Agent
