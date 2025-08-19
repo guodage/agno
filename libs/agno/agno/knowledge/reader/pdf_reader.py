@@ -87,7 +87,6 @@ async def async_process_image_page(doc_name: str, page_number: int, page: Any) -
 
 class BasePDFReader(Reader):
     def __init__(self, chunking_strategy: Optional[ChunkingStrategy] = DocumentChunking(), **kwargs):
-
         super().__init__(chunking_strategy=chunking_strategy, **kwargs)
 
     def get_supported_chunking_strategies(self) -> List[ChunkingStrategyType]:
