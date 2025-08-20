@@ -7,6 +7,7 @@ from agno.knowledge.chunking.document import DocumentChunking
 from agno.knowledge.chunking.strategy import ChunkingStrategy, ChunkingStrategyType
 from agno.knowledge.document.base import Document
 from agno.knowledge.reader.base import Reader
+from agno.knowledge.types import ContentType
 from agno.utils.http import async_fetch_with_retry, fetch_with_retry
 from agno.utils.log import log_info, logger
 
@@ -130,6 +131,9 @@ class BasePDFReader(Reader):
 class PDFReader(BasePDFReader):
     """Reader for PDF files"""
 
+    def get_supported_content_types(self) -> List[ContentType]:
+        return [ContentType.PDF]
+
     def read(self, pdf: Union[str, Path, IO[Any]], name: Optional[str] = None) -> List[Document]:
         try:
             if name:
@@ -211,6 +215,9 @@ class PDFUrlReader(BasePDFReader):
     def __init__(self, proxy: Optional[str] = None, **kwargs):
         super().__init__(**kwargs)
         self.proxy = proxy
+
+    def get_supported_content_types(self) -> List[ContentType]:
+        return [ContentType.URL]
 
     def read(self, url: str, name: Optional[str] = None) -> List[Document]:
         if not url:
