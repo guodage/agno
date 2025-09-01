@@ -68,3 +68,6 @@ coverage_report
 # AI
 .claude/
 .cursor/
+
+# IDEA
+*.iml

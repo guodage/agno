@@ -1,12 +1,12 @@
 import json
-from io import BytesIO
 from typing import Any, AsyncGenerator, Dict, List, Optional, cast
 from uuid import uuid4
 
 from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from agno.agent.agent import Agent, RunResponse
+from agno.agent.agent import Agent
+from agno.run.response import RunResponse
 from agno.app.playground.operator import (
     format_tools,
     get_agent_by_id,
@@ -32,10 +32,10 @@ from agno.app.playground.schemas import (
     WorkflowsGetResponse,
 )
 from agno.app.playground.utils import process_audio, process_document, process_image, process_video
+from agno.memory.v2.memory import Memory
 from agno.media import Audio, Image, Video
 from agno.media import File as FileMedia
 from agno.memory.agent import AgentMemory
-from agno.memory.v2 import Memory
 from agno.run.response import RunResponseErrorEvent, RunResponseEvent
 from agno.run.team import RunResponseErrorEvent as TeamRunResponseErrorEvent
 from agno.run.v2.workflow import WorkflowErrorEvent
@@ -58,7 +58,14 @@ async def chat_response_streamer(
     videos: Optional[List[Video]] = None,
     files: Optional[List[FileMedia]] = None,
 ) -> AsyncGenerator:
+    import logging
+    import time
+    logger = logging.getLogger(__name__)
+
     try:
+        logger.info(f"🎯 [STREAM_DEBUG] Starting chat_response_streamer for message: '{message[:100]}...'")
+        start_time = time.time()
+
         run_response = await agent.arun(
             message,
             session_id=session_id,
@@ -70,10 +77,32 @@ async def chat_response_streamer(
             stream=True,
             stream_intermediate_steps=True,
         )
+
+        logger.info(f"🔄 [STREAM_DEBUG] Agent.arun completed, starting iteration over response chunks")
+        chunk_count = 0
+        last_chunk_time = time.time()
+
         async for run_response_chunk in run_response:
-            yield run_response_chunk.to_json()
+            chunk_count += 1
+            current_time = time.time()
+            chunk_interval = current_time - last_chunk_time
+
+            # Log chunk details
+            chunk_json = run_response_chunk.to_json()
+
+            # Check for potential blocking scenarios
+            if chunk_interval > 5.0:  # If chunk took more than 5 seconds
+                logger.warning(f"⚠️ [STREAM_DEBUG] Slow chunk detected! Interval: {chunk_interval:.3f}s")
+
+            yield chunk_json
+            last_chunk_time = current_time
+
+        logger.info(f"✅ [STREAM_DEBUG] Stream completed successfully. Total chunks: {chunk_count}, Total time: {time.time() - start_time:.3f}s")
+
     except Exception as e:
         import traceback
+        logger.error(f"❌ [STREAM_DEBUG] Exception in chat_response_streamer: {str(e)}")
+        logger.error(f"❌ [STREAM_DEBUG] Traceback: {traceback.format_exc()}")
 
         traceback.print_exc(limit=3)
         error_response = RunResponseErrorEvent(
@@ -295,151 +324,102 @@ def get_async_playground_router(
         else:
             agent.monitoring = False
 
+        # 处理媒体文件
         base64_images: List[Image] = []
         base64_audios: List[Audio] = []
         base64_videos: List[Video] = []
-        input_files: List[FileMedia] = []
+        direct_files: List[FileMedia] = []
+        extracted_contents: List[str] = []
 
+        # 如果有上传文件，处理媒体文件和文档文件
         if files:
-            for file in files:
-                logger.info(f"Processing file: {file.content_type}")
-                if file.content_type in ["image/png", "image/jpeg", "image/jpg", "image/webp"]:
-                    try:
-                        base64_image = process_image(file)
-                        base64_images.append(base64_image)
-                    except Exception as e:
-                        logger.error(f"Error processing image {file.filename}: {e}")
-                        continue
-                elif file.content_type in ["audio/wav", "audio/mp3", "audio/mpeg"]:
-                    try:
-                        base64_audio = process_audio(file)
-                        base64_audios.append(base64_audio)
-                    except Exception as e:
-                        logger.error(f"Error processing audio {file.filename}: {e}")
-                        continue
-                elif file.content_type in [
-                    "video/x-flv",
-                    "video/quicktime",
-                    "video/mpeg",
-                    "video/mpegs",
-                    "video/mpgs",
-                    "video/mpg",
-                    "video/mpg",
-                    "video/mp4",
-                    "video/webm",
-                    "video/wmv",
-                    "video/3gpp",
-                ]:
-                    try:
-                        base64_video = process_video(file)
-                        base64_videos.append(base64_video)
-                    except Exception as e:
-                        logger.error(f"Error processing video {file.filename}: {e}")
-                        continue
-                else:
-                    # Process document files
-                    if file.content_type == "application/pdf":
-                        from agno.document.reader.pdf_reader import PDFReader
-
-                        contents = await file.read()
-
-                        # If agent has knowledge base, load the document into it
-                        if agent.knowledge is not None:
-                            pdf_file = BytesIO(contents)
-                            pdf_file.name = file.filename
-                            file_content = PDFReader().read(pdf_file)
-                            agent.knowledge.load_documents(file_content)
-                        else:
-                            # If no knowledge base, treat as direct file input (similar to cookbook examples)
-                            input_files.append(FileMedia(content=contents))
-
-                    elif file.content_type == "text/csv":
-                        from agno.document.reader.csv_reader import CSVReader
-
-                        contents = await file.read()
-
-                        # If agent has knowledge base, load the document into it
-                        if agent.knowledge is not None:
-                            csv_file = BytesIO(contents)
-                            csv_file.name = file.filename
-                            file_content = CSVReader().read(csv_file)
-                            agent.knowledge.load_documents(file_content)
-                        else:
-                            # If no knowledge base, treat as direct file input
-                            input_files.append(FileMedia(content=contents))
-
-                    elif file.content_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
-                        from agno.document.reader.docx_reader import DocxReader
-
-                        contents = await file.read()
-
-                        # If agent has knowledge base, load the document into it
-                        if agent.knowledge is not None:
-                            docx_file = BytesIO(contents)
-                            docx_file.name = file.filename
-                            file_content = DocxReader().read(docx_file)
-                            agent.knowledge.load_documents(file_content)
-                        else:
-                            # If no knowledge base, treat as direct file input
-                            input_files.append(FileMedia(content=contents))
-
-                    elif file.content_type == "text/plain":
-                        from agno.document.reader.text_reader import TextReader
-
-                        contents = await file.read()
-
-                        # If agent has knowledge base, load the document into it
-                        if agent.knowledge is not None:
-                            text_file = BytesIO(contents)
-                            text_file.name = file.filename
-                            file_content = TextReader().read(text_file)
-                            agent.knowledge.load_documents(file_content)
-                        else:
-                            # If no knowledge base, treat as direct file input
-                            input_files.append(FileMedia(content=contents))
-
-                    elif file.content_type == "application/json":
-                        from agno.document.reader.json_reader import JSONReader
-
-                        contents = await file.read()
-
-                        # If agent has knowledge base, load the document into it
-                        if agent.knowledge is not None:
-                            json_file = BytesIO(contents)
-                            json_file.name = file.filename
-                            file_content = JSONReader().read(json_file)
-                            agent.knowledge.load_documents(file_content)
-                        else:
-                            # If no knowledge base, treat as direct file input
-                            input_files.append(FileMedia(content=contents))
+            # 使用统一的文件处理逻辑
+            try:
+                from agno.file.file_processor import process_uploaded_files
+                direct_files, extracted_contents, _ = await process_uploaded_files(files, agent.knowledge)
+                logger.info("Using unified file processing logic")
+            except ImportError as e:
+                logger.warning(f"Failed to import unified file processor, using fallback logic: {e}")
+                # 回退到原来的处理逻辑
+                for file in files:
+                    logger.info(f"Processing file: {file.content_type}")
+                    if file.content_type in ["image/png", "image/jpeg", "image/jpg", "image/webp"]:
+                        try:
+                            base64_image = process_image(file)
+                            base64_images.append(base64_image)
+                        except Exception as e:
+                            logger.error(f"Error processing image {file.filename}: {e}")
+                            continue
+                    elif file.content_type in ["audio/wav", "audio/mp3", "audio/mpeg"]:
+                        try:
+                            base64_audio = process_audio(file)
+                            base64_audios.append(base64_audio)
+                        except Exception as e:
+                            logger.error(f"Error processing audio {file.filename}: {e}")
+                            continue
+                    elif file.content_type in [
+                        "video/x-flv",
+                        "video/quicktime",
+                        "video/mpeg",
+                        "video/mpegs",
+                        "video/mpgs",
+                        "video/mpg",
+                        "video/mpg",
+                        "video/mp4",
+                        "video/webm",
+                        "video/wmv",
+                        "video/3gpp",
+                    ]:
+                        try:
+                            base64_video = process_video(file)
+                            base64_videos.append(base64_video)
+                        except Exception as e:
+                            logger.error(f"Error processing video {file.filename}: {e}")
+                            continue
                     else:
-                        raise HTTPException(status_code=400, detail="Unsupported file type")
+                        # 处理文档文件
+                        document_file = process_document(file)
+                        if document_file is not None:
+                            direct_files.append(document_file)
+
+        # 如果我们有提取的内容，将其添加到用户消息中
+        final_message = message
+        if extracted_contents:
+            extracted_content_str = "\n\n".join(extracted_contents)
+            final_message = f"{extracted_content_str}\n\nUser message: {message}"
 
         if stream:
+            # 优化流式响应配置，防止阻断
             return StreamingResponse(
                 chat_response_streamer(
                     agent,
-                    message,
+                    final_message,
                     session_id=session_id,
                     user_id=user_id,
                     images=base64_images if base64_images else None,
                     audio=base64_audios if base64_audios else None,
                     videos=base64_videos if base64_videos else None,
-                    files=input_files if input_files else None,
+                    files=direct_files if direct_files else None,
                 ),
                 media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "X-Accel-Buffering": "no",  # 禁用Nginx缓冲
+                    "Transfer-Encoding": "chunked",
+                },
             )
         else:
             run_response = cast(
                 RunResponse,
                 await agent.arun(
-                    message=message,
+                    message=final_message,
                     session_id=session_id,
                     user_id=user_id,
                     images=base64_images if base64_images else None,
                     audio=base64_audios if base64_audios else None,
                     videos=base64_videos if base64_videos else None,
-                    files=input_files if input_files else None,
+                    files=direct_files if direct_files else None,
                     stream=False,
                 ),
             )
@@ -1048,3 +1028,12 @@ def get_async_playground_router(
             return []
 
     return playground_router
+
+
+def build_file_media(contents, file, format = None) -> FileMedia:
+    # first use file's suffix then use format
+    format = file.filename.split(".")[-1] if "." in file.filename else format
+    return FileMedia(content=contents,
+                     name=file.filename,
+                     mime_type=file.content_type,
+                     format=format)

@@ -387,3 +387,20 @@ class File(BaseModel):
             return content, mime_type
         else:
             return None
+
+    # def to_dict(self) -> Dict[str, Any]:
+    #     import base64
+    #     import zlib
+    #
+    #     response_dict = {
+    #         "content": base64.b64encode(
+    #             zlib.compress(self.content) if isinstance(self.content, bytes) else self.content.encode("utf-8")
+    #         ).decode("utf-8")
+    #         if self.content
+    #         else None,
+    #         "filepath": self.filepath,
+    #         "format": self.format,
+    #         "name": self.name,  # Add the missing name attribute
+    #     }
+    #
+    #     return {k: v for k, v in response_dict.items() if v is not None}

@@ -217,6 +217,10 @@ def _format_file_for_message(file: File) -> Optional[Dict[str, Any]]:
     import base64
     import mimetypes
     from pathlib import Path
+    
+    # Add debug logging
+    from agno.utils.log import log_debug
+    log_debug(f"_format_file_for_message called with file: name={getattr(file, 'name', 'NOT_SET')}, has_content={file.content is not None}, content_length={len(file.content) if file.content else 0}")
 
     # Case 1: Document is a URL
     if file.url is not None:
@@ -248,10 +252,12 @@ def _format_file_for_message(file: File) -> Optional[Dict[str, Any]]:
 
     # Case 3: Document is bytes content
     if file.content is not None:
-        name = getattr(file, "filename", "file")
+        # Fix: Use file.name instead of getattr(file, "filename", "file")
+        name = file.name or "file"
         _mime = file.mime_type or mimetypes.guess_type(name)[0] or "application/pdf"
         _encoded = base64.b64encode(file.content).decode("utf-8")
         _data_url = f"data:{_mime};base64,{_encoded}"
+        log_debug(f"Formatted file with name: {name}, mime_type: {_mime}, encoded_length: {len(_encoded)}")
         return {"type": "file", "file": {"filename": name, "file_data": _data_url}}
 
     return None

@@ -4727,6 +4727,13 @@ class Agent:
         2. If create_default_user_message is False or if the message is a list, return the message as is.
         3. Build the default user message for the Agent
         """
+        # Add debug logging
+        if files:
+            from agno.utils.log import log_debug
+            log_debug(f"get_user_message called with {len(files)} files:")
+            for i, file in enumerate(files):
+                log_debug(f"  file[{i}]: name={getattr(file, 'name', 'NOT_SET')}, has_content={file.content is not None}, content_length={len(file.content) if file.content else 0}")
+        
         # Get references from the knowledge base to use in the user message
         references = None
         self.run_response = cast(RunResponse, self.run_response)

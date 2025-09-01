@@ -273,6 +273,14 @@ class OpenAIChat(Model):
         Returns:
             Dict[str, Any]: The formatted message.
         """
+        # Add debug logging
+        from agno.utils.log import log_debug
+        log_debug(f"_format_message called with message: role={message.role}, has_files={message.files is not None}")
+        if message.files:
+            log_debug(f"  message has {len(message.files)} files:")
+            for i, file in enumerate(message.files):
+                log_debug(f"    file[{i}]: name={getattr(file, 'name', 'NOT_SET')}, has_content={file.content is not None}, content_length={len(file.content) if file.content else 0}")
+        
         message_dict: Dict[str, Any] = {
             "role": self.role_map[message.role] if self.role_map else self.default_role_map[message.role],
             "content": message.content,
